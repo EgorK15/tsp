@@ -5,7 +5,7 @@
 
 ## ЛР1 — слой работы с БД
 
-PostgreSQL + SQLAlchemy 2.0.
+PostgreSQL + SQLAlchemy 2.0, миграции через Alembic.
 
 Запуск:
 
@@ -15,7 +15,13 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 copy .env.example .env
+alembic upgrade head
+python seed.py
+python demo.py
 ```
 
 Вместо докера можно использовать локальный PostgreSQL: создать пользователя и базу `techqueue`
 (пароль `techqueue`) или поменять `DATABASE_URL` в `.env`.
+
+`seed.py` очищает таблицы и заливает тестовые данные, `demo.py` прогоняет сценарии работы с БД
+и печатает результат в консоль.
