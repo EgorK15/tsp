@@ -1,11 +1,12 @@
 import enum
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
-    BigInteger, Boolean, CheckConstraint, Column, DateTime, Enum, ForeignKey, Index,
+    BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, Enum, ForeignKey, Index,
     Numeric, SmallInteger, String, Table, Text, func, text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.database import Base
@@ -174,3 +175,41 @@ class StageHistory(Base):
     request: Mapped[Request] = relationship(back_populates="history")
     from_stage: Mapped[Stage | None] = relationship(foreign_keys=[from_stage_id])
     to_stage: Mapped[Stage] = relationship(foreign_keys=[to_stage_id])
+
+
+class LoadSnapshot(Base):
+    __tablename__ = "load_snapshots"
+
+    snapshot_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    specialist_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    load: Mapped[Decimal] = mapped_column(Numeric(8, 2))
+    active_requests: Mapped[int] = mapped_column(default=0)
+
+    specialist: Mapped[User] = relationship()
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    event_type: Mapped[str] = mapped_column(String(50))
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped[User] = relationship()
+
+    def __repr__(self):
+        return f"<Notification {self.id} {self.event_type}>"
+
+
+class Setting(Base):
+    __tablename__ = "settings"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[dict] = mapped_column(JSONB)
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
