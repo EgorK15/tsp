@@ -23,3 +23,13 @@ class UserOut(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class UserUpdate(BaseModel):
+    full_name: str | None = Field(default=None, min_length=1, max_length=255)
+    password: str | None = Field(default=None, min_length=6)
+    is_active: bool | None = None
+
+
+class RoleUpdate(BaseModel):
+    role: str

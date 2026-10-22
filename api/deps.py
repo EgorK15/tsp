@@ -22,3 +22,11 @@ def get_current_user(token: str = Depends(oauth2_scheme), session=Depends(get_db
     if user is None or not user.is_active:
         raise HTTPException(401, "Неверный или просроченный токен", headers={"WWW-Authenticate": "Bearer"})
     return user
+
+
+def require_role(*roles):
+    def checker(user=Depends(get_current_user)):
+        if user.role not in roles:
+            raise HTTPException(403, "Недостаточно прав")
+        return user
+    return checker
