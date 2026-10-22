@@ -21,11 +21,22 @@ services:
       DATABASE_URL: postgresql+psycopg2://techqueue:techqueue@db:5432/techqueue
       JWT_SECRET: ${JWT_SECRET:-change-me}
       JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-60}
+      ROOT_PATH: /api
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/static:/usr/share/nginx/html:ro
+    depends_on:
+      - api
 
 volumes:
   pgdata:
