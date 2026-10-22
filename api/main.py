@@ -2,11 +2,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
-from api.routers import auth, categories, deals, requests, users
+from api.routers import auth, categories, dashboard, deals, requests, settings, users
 
 app = FastAPI(title="ТехОчередь")
 
-for router in [auth.router, users.router, categories.router, deals.router, requests.router]:
+for router in [auth.router, users.router, categories.router, deals.router, requests.router,
+               dashboard.router, settings.router]:
     app.include_router(router)
 
 
