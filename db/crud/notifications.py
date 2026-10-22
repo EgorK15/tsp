@@ -13,6 +13,10 @@ def create_notification(session, user_id, event_type, payload, commit=True):
     return notification
 
 
+def get_notification(session, notification_id):
+    return session.get(Notification, notification_id)
+
+
 def list_notifications(session, user_id, unread_only=False):
     query = select(Notification).where(Notification.user_id == user_id).order_by(Notification.id)
     if unread_only:
