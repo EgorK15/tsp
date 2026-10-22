@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from api.deps import get_current_user, get_db, get_settings, require_role
 from api.routers.categories import get_category_or_404
 from api.routers.deals import get_own_deal
-from api.schemas.requests import RequestCreate, RequestOut, RequestUpdate
+from api.schemas.requests import HistoryOut, RequestCreate, RequestOut, RequestUpdate, StageChange
 from db import logic
 from db.crud import requests
 
@@ -21,6 +21,13 @@ def request_out(request, settings):
     out.needs_return = logic.needs_return(request.deal, settings)
     out.is_overdue = logic.is_overdue(request, settings, datetime.now(timezone.utc))
     return out
+
+
+def history_out(item):
+    return HistoryOut(
+        id=item.id, from_stage=item.from_stage.code if item.from_stage else None, to_stage=item.to_stage.code,
+        changed_by=item.changed_by, changed_at=item.changed_at,
+    )
 
 
 def can_see(request, user):
@@ -86,3 +93,16 @@ def delete_request(request_id: int, session=Depends(get_db), user=Depends(requir
     get_visible_request(session, request_id, user)
     requests.delete_request(session, request_id)
     return Response(status_code=204)
+
+
+@router.post("/{request_id}/stage", response_model=RequestOut)
+def change_stage(request_id: int, data: StageChange, session=Depends(get_db), settings=Depends(get_settings),
+                 user=Depends(get_current_user)):
+    get_visible_request(session, request_id, user)
+    return request_out(requests.change_stage(session, request_id, data.to, user), settings)
+
+
+@router.get("/{request_id}/history", response_model=list[HistoryOut])
+def request_history(request_id: int, session=Depends(get_db), user=Depends(get_current_user)):
+    get_visible_request(session, request_id, user)
+    return [history_out(h) for h in requests.request_history(session, request_id)]

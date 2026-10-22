@@ -36,3 +36,15 @@ class RequestOut(BaseModel):
     priority: int = 0
     needs_return: bool = False
     is_overdue: bool = False
+
+
+class StageChange(BaseModel):
+    to: str
+
+
+class HistoryOut(BaseModel):
+    id: int
+    from_stage: str | None
+    to_stage: str
+    changed_by: int
+    changed_at: datetime
