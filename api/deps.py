@@ -2,7 +2,7 @@ from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 
 from api.security import decode_token
-from db.crud import users
+from db.crud import settings, users
 from db.database import SessionLocal
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
@@ -14,6 +14,10 @@ def get_db():
         yield session
     finally:
         session.close()
+
+
+def get_settings(session=Depends(get_db)):
+    return settings.get_all_settings(session)
 
 
 def get_current_user(token: str = Depends(oauth2_scheme), session=Depends(get_db)):
