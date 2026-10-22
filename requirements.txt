@@ -7,3 +7,4 @@ uvicorn[standard]
 pyjwt
 python-multipart
 email-validator
+gunicorn
