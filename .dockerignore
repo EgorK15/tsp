@@ -1,0 +1,12 @@
+.git
+.idea
+.venv
+venv
+.env
+__pycache__
+*.pyc
+**/*.md
+postman
+nginx
+Dockerfile
+docker-compose.yml
