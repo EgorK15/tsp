@@ -5,9 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from api.deps import get_current_user, get_db, get_settings, require_role
 from api.routers.categories import get_category_or_404
 from api.routers.deals import get_own_deal
-from api.schemas.requests import HistoryOut, RequestCreate, RequestOut, RequestUpdate, StageChange
+from api.schemas.requests import (
+    AssigneeOut, AssignIn, HistoryOut, ReassignIn, RequestCreate, RequestOut, RequestUpdate,
+    SpecialistLoadOut, StageChange,
+)
 from db import logic
-from db.crud import requests
+from db.crud import assignees, requests
 
 router = APIRouter(prefix="/requests", tags=["requests"])
 
@@ -28,6 +31,17 @@ def history_out(item):
         id=item.id, from_stage=item.from_stage.code if item.from_stage else None, to_stage=item.to_stage.code,
         changed_by=item.changed_by, changed_at=item.changed_at,
     )
+
+
+def assignee_out(assignee):
+    out = AssigneeOut.model_validate(assignee)
+    out.full_name = assignee.specialist.full_name
+    return out
+
+
+def load_out(user, load, index):
+    return SpecialistLoadOut(user_id=user.id, full_name=user.full_name, load=round(load, 2),
+                             load_index=round(index, 1))
 
 
 def can_see(request, user):
@@ -106,3 +120,39 @@ def change_stage(request_id: int, data: StageChange, session=Depends(get_db), se
 def request_history(request_id: int, session=Depends(get_db), user=Depends(get_current_user)):
     get_visible_request(session, request_id, user)
     return [history_out(h) for h in requests.request_history(session, request_id)]
+
+
+@router.get("/{request_id}/suggest", response_model=list[SpecialistLoadOut])
+def suggest_specialists(request_id: int, session=Depends(get_db), settings=Depends(get_settings),
+                        user=Depends(require_role("head"))):
+    request = get_visible_request(session, request_id, user)
+    now = datetime.now(timezone.utc)
+    return [load_out(*item) for item in logic.suggest_specialists(session, request.category_id, settings, now)]
+
+
+@router.get("/{request_id}/assignees", response_model=list[AssigneeOut])
+def list_assignees(request_id: int, session=Depends(get_db), user=Depends(get_current_user)):
+    get_visible_request(session, request_id, user)
+    return [assignee_out(a) for a in assignees.list_assignees(session, request_id)]
+
+
+@router.put("/{request_id}/assignees", response_model=list[AssigneeOut])
+def assign(request_id: int, data: AssignIn, session=Depends(get_db), user=Depends(require_role("head"))):
+    get_visible_request(session, request_id, user)
+    result = assignees.assign(session, request_id, data.main_id, data.co_ids, by_user=user)
+    return [assignee_out(a) for a in result]
+
+
+@router.delete("/{request_id}/assignees/{specialist_id}", status_code=204)
+def unassign(request_id: int, specialist_id: int, session=Depends(get_db), user=Depends(require_role("head"))):
+    get_visible_request(session, request_id, user)
+    if not assignees.unassign(session, request_id, specialist_id):
+        raise HTTPException(404, "Такого исполнителя у заявки нет")
+    return Response(status_code=204)
+
+
+@router.post("/{request_id}/reassign", response_model=list[AssigneeOut])
+def reassign(request_id: int, data: ReassignIn, session=Depends(get_db), user=Depends(require_role("head"))):
+    get_visible_request(session, request_id, user)
+    assignees.reassign_main(session, request_id, data.main_id)
+    return [assignee_out(a) for a in assignees.list_assignees(session, request_id)]

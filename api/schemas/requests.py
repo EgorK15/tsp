@@ -48,3 +48,28 @@ class HistoryOut(BaseModel):
     to_stage: str
     changed_by: int
     changed_at: datetime
+
+
+class AssignIn(BaseModel):
+    main_id: int
+    co_ids: list[int] = []
+
+
+class ReassignIn(BaseModel):
+    main_id: int
+
+
+class AssigneeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    specialist_id: int
+    full_name: str = ""
+    is_main: bool
+    assigned_at: datetime
+
+
+class SpecialistLoadOut(BaseModel):
+    user_id: int
+    full_name: str
+    load: float
+    load_index: float
