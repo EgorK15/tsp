@@ -39,3 +39,13 @@ alembic upgrade head
 
 После `downgrade -1` служебные таблицы удаляются, а пользователи, сделки и заявки остаются.
 `seed.py` чистит все таблицы, поэтому перед ним нужно вернуться на `head`.
+
+## ЛР2 — REST API
+
+FastAPI, Pydantic, JWT. Запуск API локально (БД должна быть поднята):
+
+```
+uvicorn api.main:app --reload
+```
+
+Документация Swagger: http://localhost:8000/docs
