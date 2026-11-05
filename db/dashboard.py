@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import contains_eager, joinedload, selectinload
 
 from db import logic
@@ -52,28 +53,54 @@ def department_load(session, settings, now):
     return result
 
 
+def store_load_snapshot(session, day, rows):
+    """Записывает строки (специалист, загрузка, число заявок) в транзакции вызывающего."""
+    values = [
+        dict(snapshot_date=day, specialist_id=user_id, load=Decimal(str(round(load, 2))),
+             active_requests=count)
+        for user_id, load, count in sorted(rows)
+    ]
+    if not values:
+        return []
+    statement = insert(LoadSnapshot).values(values)
+    statement = statement.on_conflict_do_update(
+        index_elements=[LoadSnapshot.snapshot_date, LoadSnapshot.specialist_id],
+        set_={"load": statement.excluded.load, "active_requests": statement.excluded.active_requests},
+    ).returning(LoadSnapshot)
+    snapshots = session.scalars(statement, execution_options={"populate_existing": True}).all()
+    return sorted(snapshots, key=lambda item: item.specialist_id)
+
+
 def take_load_snapshot(session, settings, day):
     """Сохраняет загрузку специалистов на дату (задача Планировщика)."""
     now = datetime.now(timezone.utc)
-    snapshots = []
-    for user, load, _ in department_load(session, settings, now):
-        snapshot = LoadSnapshot(
-            snapshot_date=day, specialist_id=user.id, load=Decimal(str(round(load, 2))),
-            active_requests=len(logic.active_requests(session, user.id)),
-        )
-        snapshots.append(session.merge(snapshot))
+    specialists = [user for user in users.list_users(session, role="specialist") if user.is_active]
+    loads = logic.specialist_loads(session, [user.id for user in specialists], settings, now)
+    snapshots = store_load_snapshot(
+        session, day, ((user_id, load, count) for user_id, (load, count) in loads.items()),
+    )
     session.commit()
     return snapshots
 
 
+def store_overdue_notifications(session, rows):
+    """Сохраняет строки (заявка, название, возраст, исполнители) в транзакции вызывающего."""
+    return [
+        notifications.create_notification(
+            session, user_id, "request_overdue",
+            {"request_id": request_id, "title": title, "age": age}, commit=False,
+        )
+        for request_id, title, age, assignee_ids in rows
+        for user_id in assignee_ids
+    ]
+
+
 def check_overdue(session, settings, now):
     """Создаёт уведомления исполнителям просроченных заявок."""
-    created = []
-    for r in overdue_requests(session, settings, now):
-        for a in r.assignees:
-            created.append(notifications.create_notification(
-                session, a.specialist_id, "request_overdue",
-                {"request_id": r.id, "title": r.title, "age": logic.request_age(r, now)}, commit=False,
-            ))
+    rows = (
+        (r.id, r.title, logic.request_age(r, now), [a.specialist_id for a in r.assignees])
+        for r in overdue_requests(session, settings, now, include_assignees=True)
+    )
+    created = store_overdue_notifications(session, rows)
     session.commit()
     return created
