@@ -22,8 +22,19 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me}
       JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-60}
       ROOT_PATH: /api
+      LOAD_SERVICE_TARGET: load-service:50051
+      LOAD_SERVICE_TIMEOUT: ${LOAD_SERVICE_TIMEOUT:-2}
     ports:
       - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  load-service:
+    build: .
+    command: ["python", "-m", "load_service.server"]
+    environment:
+      DATABASE_URL: postgresql+psycopg2://techqueue:techqueue@db:5432/techqueue
     depends_on:
       db:
         condition: service_healthy

@@ -8,3 +8,5 @@ pyjwt
 python-multipart
 email-validator
 gunicorn
+grpcio==1.76.0
+protobuf==6.33.5

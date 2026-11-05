@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package techqueue.load.v1;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+service LoadService {
+  rpc RankSpecialists(RankSpecialistsRequest) returns (DepartmentLoadResponse);
+  rpc GetDashboard(google.protobuf.Empty) returns (DashboardResponse);
+  rpc GetDepartmentLoad(google.protobuf.Empty) returns (DepartmentLoadResponse);
+  rpc GetOverdueRequests(google.protobuf.Empty) returns (OverdueRequestsResponse);
+}
+
+message RankSpecialistsRequest {
+  int64 category_id = 1;
+}
+
+message SpecialistLoad {
+  int64 specialist_id = 1;
+  string full_name = 2;
+  double load = 3;
+  double load_index = 4;
+  int32 active_requests = 5;
+}
+
+message DepartmentLoadResponse {
+  repeated SpecialistLoad specialists = 1;
+}
+
+message OverdueRequest {
+  int64 request_id = 1;
+  int64 deal_id = 2;
+  string title = 3;
+  string stage = 4;
+  int32 priority = 5;
+  int32 age = 6;
+  repeated int64 assignee_ids = 7;
+}
+
+message OverdueRequestsResponse {
+  repeated OverdueRequest requests = 1;
+}
+
+message MedianDays {
+  int32 priority = 1;
+  optional double days = 2;
+}
+
+message ReadyRequest {
+  int64 request_id = 1;
+  int64 deal_id = 2;
+  string title = 3;
+  google.protobuf.Timestamp ready_at = 4;
+  int32 days_waiting = 5;
+}
+
+message DashboardResponse {
+  repeated OverdueRequest overdue = 1;
+  repeated MedianDays median_days = 2;
+  repeated ReadyRequest ready_without_presentation = 3;
+  repeated SpecialistLoad load = 4;
+}

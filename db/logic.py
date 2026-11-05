@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 
 from db.crud import categories
 from db.models import AxisStatus, Request, RequestAssignee, Stage
@@ -70,6 +71,29 @@ def active_requests(session, specialist_id):
 
 def specialist_load(session, specialist_id, settings, now):
     return sum(request_weight(r, settings, now) for r in active_requests(session, specialist_id))
+
+
+def specialist_loads(session, specialist_ids, settings, now):
+    loads = dict.fromkeys(specialist_ids, 0.0)
+    counts = dict.fromkeys(loads, 0)
+    if not loads:
+        return {}
+
+    query = (
+        select(RequestAssignee.specialist_id, Request)
+        .join(Request, Request.id == RequestAssignee.request_id)
+        .join(Request.stage)
+        .options(joinedload(Request.deal))
+        .where(RequestAssignee.specialist_id.in_(loads), Stage.kind == "queue")
+        .order_by(Request.id)
+    )
+    weights = {}
+    for specialist_id, request in session.execute(query):
+        if request.id not in weights:
+            weights[request.id] = request_weight(request, settings, now)
+        loads[specialist_id] += weights[request.id]
+        counts[specialist_id] += 1
+    return {specialist_id: (load, counts[specialist_id]) for specialist_id, load in loads.items()}
 
 
 def load_index(load, settings):
