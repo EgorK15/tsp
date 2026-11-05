@@ -39,11 +39,6 @@ def assignee_out(assignee):
     return out
 
 
-def load_out(user, load, index):
-    return SpecialistLoadOut(user_id=user.id, full_name=user.full_name, load=round(load, 2),
-                             load_index=round(index, 1))
-
-
 def specialist_load_out(item):
     """Строка загрузки из ответа сервиса загрузки, округление — только в HTTP-ответе."""
     return SpecialistLoadOut(user_id=item.specialist_id, full_name=item.full_name, load=round(item.load, 2),
