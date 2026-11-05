@@ -3,31 +3,42 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
+from sqlalchemy.orm import contains_eager, joinedload, selectinload
 
 from db import logic
 from db.crud import notifications, users
 from db.models import LoadSnapshot, Request, Stage
 
 
-def queue_requests(session):
-    query = select(Request).join(Request.stage).where(Stage.kind == "queue").order_by(Request.id)
+def queue_requests(session, include_assignees=False):
+    query = (
+        select(Request).join(Request.stage)
+        .options(contains_eager(Request.stage), joinedload(Request.deal))
+        .where(Stage.kind == "queue").order_by(Request.id)
+    )
+    if include_assignees:
+        query = query.options(selectinload(Request.assignees))
     return session.scalars(query).all()
 
 
-def overdue_requests(session, settings, now):
-    return [r for r in queue_requests(session) if logic.is_overdue(r, settings, now)]
+def overdue_requests(session, settings, now, include_assignees=False):
+    return [r for r in queue_requests(session, include_assignees) if logic.is_overdue(r, settings, now)]
 
 
 def median_days_by_priority(session, settings):
     """Медиана рабочих дней от создания заявки до готового КП по приоритетам."""
     days = {1: [], 2: [], 3: []}
-    for r in session.scalars(select(Request).where(Request.ready_at.is_not(None))):
+    query = select(Request).options(joinedload(Request.deal)).where(Request.ready_at.is_not(None))
+    for r in session.scalars(query):
         days[logic.deal_priority(r.deal)].append(logic.work_days_between(r.created_at, r.ready_at))
     return {p: statistics.median(values) if values else None for p, values in days.items()}
 
 
 def ready_without_presentation(session, settings, now):
-    query = select(Request).join(Request.stage).where(Stage.code == "ready").order_by(Request.ready_at)
+    query = (
+        select(Request).join(Request.stage)
+        .where(Stage.code == "ready", Request.ready_at.is_not(None)).order_by(Request.ready_at)
+    )
     return [r for r in session.scalars(query) if (now - r.ready_at).days > settings["ready_wait_days"]]
 
 

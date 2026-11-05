@@ -9,7 +9,7 @@ from sqlalchemy import text
 
 from db.crud.settings import get_all_settings
 from db.database import SessionLocal
-from load_service import calculations
+from load_service import analytics, calculations
 from proto import load_pb2_grpc
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,15 @@ class LoadService(load_pb2_grpc.LoadServiceServicer):
         if request.category_id <= 0:
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, "category_id must be positive")
         return self._read(context, calculations.rank_specialists, request.category_id)
+
+    def GetDashboard(self, request, context):
+        return self._read(context, analytics.get_dashboard)
+
+    def GetDepartmentLoad(self, request, context):
+        return self._read(context, analytics.department_load)
+
+    def GetOverdueRequests(self, request, context):
+        return self._read(context, analytics.overdue_requests)
 
 
 def create_server(session_factory):
