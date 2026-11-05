@@ -1,11 +1,11 @@
-from datetime import date, datetime, timezone
+from datetime import timezone
 
 from fastapi import APIRouter, Depends
 
-from api.deps import get_db, get_load_client, get_settings, get_trace_id, require_role
+from api.deps import get_load_client, get_trace_id, require_role
 from api.routers.requests import specialist_load_out
 from api.schemas.dashboard import DashboardOut, OverdueOut, ReadyOut, SnapshotOut
-from db import dashboard
+from scheduler import jobs
 
 router = APIRouter()
 
@@ -31,11 +31,12 @@ def get_dashboard(user=Depends(require_role("head")), client=Depends(get_load_cl
 
 
 @router.post("/scheduler/snapshot", response_model=list[SnapshotOut], tags=["scheduler"])
-def take_snapshot(session=Depends(get_db), settings=Depends(get_settings), user=Depends(require_role("head"))):
-    return dashboard.take_load_snapshot(session, settings, date.today())
+def take_snapshot(user=Depends(require_role("head")), client=Depends(get_load_client),
+                  trace_id=Depends(get_trace_id)):
+    return jobs.take_snapshot(client, request_id=trace_id)
 
 
 @router.post("/scheduler/check-overdue", tags=["scheduler"])
-def check_overdue(session=Depends(get_db), settings=Depends(get_settings), user=Depends(require_role("head"))):
-    created = dashboard.check_overdue(session, settings, datetime.now(timezone.utc))
-    return {"created": len(created)}
+def check_overdue(user=Depends(require_role("head")), client=Depends(get_load_client),
+                  trace_id=Depends(get_trace_id)):
+    return {"created": jobs.check_overdue(client, request_id=trace_id)}
