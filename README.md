@@ -140,3 +140,87 @@ curl -X POST localhost/api/requests/15/stage -H "Authorization: Bearer <токе
 
 curl localhost/api/dashboard -H "Authorization: Bearer <токен руководителя>"
 ```
+
+## ЛР3 — gRPC: сервис загрузки и планировщик
+
+Подбор исполнителей, дашборд руководителя и расчёты для фоновых задач выполняет отдельный процесс — Load Service.
+FastAPI и Scheduler обращаются к нему по gRPC (HTTP/2), общий контракт — `proto/load.proto`. Load Service только читает
+PostgreSQL, снимки загрузки и уведомления в отдельной транзакции записывают Scheduler или ручные HTTP-ручки.
+
+```
+Postman → Nginx → api (FastAPI) ──gRPC──┐
+                                        ├──→ load-service ──→ PostgreSQL (чтение)
+                  scheduler ────gRPC────┘
+```
+
+| RPC | Кто вызывает |
+|---|---|
+| `RankSpecialists` | `GET /requests/{id}/suggest` |
+| `GetDashboard` | `GET /dashboard` |
+| `GetDepartmentLoad` | Scheduler раз в сутки (00:00 UTC) и `POST /scheduler/snapshot` |
+| `GetOverdueRequests` | Scheduler раз в час и `POST /scheduler/check-overdue` |
+
+К сервисам ЛР2 добавились два:
+
+- `load-service` — gRPC-сервер `python -m load_service.server`, порт 50051 доступен только внутри сети Compose;
+- `scheduler` — `python -m scheduler.main`, один экземпляр, расписание по UTC.
+
+```
+docker compose up --build -d
+docker compose exec api python seed.py
+docker compose ps
+```
+
+Разовый запуск задач Планировщика без ожидания расписания:
+
+```
+docker compose exec scheduler python -m scheduler.main --once snapshot
+docker compose exec scheduler python -m scheduler.main --once check-overdue
+```
+
+Сначала выполняется RPC, потом в отдельной транзакции записывается весь результат. Если RPC не прошёл, в базу ничего не
+пишется; если не записалась одна строка, откатывается вся пачка.
+
+### Логи и request ID
+
+Каждый ответ API содержит заголовок `X-Request-ID`. Тот же идентификатор уходит в metadata gRPC-вызова и попадает в логи
+клиента (`api`) и сервера (`load-service`):
+
+```
+docker compose logs api load-service | findstr <X-Request-ID>
+```
+
+### Ошибки сервиса загрузки
+
+| gRPC | HTTP | Когда |
+|---|---|---|
+| `UNAVAILABLE` | 503 | сервис остановлен, соединения нет |
+| `DEADLINE_EXCEEDED` | 504 | ответа нет за `LOAD_SERVICE_TIMEOUT` секунд (по умолчанию 2): сервис завис или его адрес ещё ищется |
+| остальные | 502 | ошибка расчёта, подробности только в логах `load-service` |
+
+Права и наличие заявки API проверяет до вызова, поэтому 401/403/404 приходят без RPC. Остальные ручки при недоступном
+сервисе загрузки работают как обычно.
+
+```
+docker compose stop load-service     # подбор и дашборд → 503, первые запросы после остановки могут дать 504
+docker compose start load-service    # через несколько секунд снова 200
+docker compose pause load-service    # сервис «завис» → 504 через 2 секунды
+docker compose unpause load-service
+```
+
+### Без Docker
+
+Нужны PostgreSQL и `LOAD_SERVICE_TARGET=127.0.0.1:50051` в `.env` (см. `.env.example`). Каждую команду — в отдельной консоли:
+
+```
+python -m load_service.server
+uvicorn api.main:app --reload
+python -m scheduler.main --once snapshot
+```
+
+Python-модули в `proto/` сгенерированы из `proto/load.proto`, после изменения контракта:
+
+```
+pip install -r requirements-grpc-dev.txt
+python -m grpc_tools.protoc -I . --python_out=. --grpc_python_out=. proto/load.proto
+```

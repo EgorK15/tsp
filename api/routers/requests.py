@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 
-from api.deps import get_current_user, get_db, get_settings, require_role
+from api.deps import get_current_user, get_db, get_load_client, get_settings, get_trace_id, require_role
 from api.routers.categories import get_category_or_404
 from api.routers.deals import get_own_deal
 from api.schemas.requests import (
@@ -39,9 +39,10 @@ def assignee_out(assignee):
     return out
 
 
-def load_out(user, load, index):
-    return SpecialistLoadOut(user_id=user.id, full_name=user.full_name, load=round(load, 2),
-                             load_index=round(index, 1))
+def specialist_load_out(item):
+    """Строка загрузки из ответа сервиса загрузки, округление — только в HTTP-ответе."""
+    return SpecialistLoadOut(user_id=item.specialist_id, full_name=item.full_name, load=round(item.load, 2),
+                             load_index=round(item.load_index, 1))
 
 
 def can_see(request, user):
@@ -123,11 +124,11 @@ def request_history(request_id: int, session=Depends(get_db), user=Depends(get_c
 
 
 @router.get("/{request_id}/suggest", response_model=list[SpecialistLoadOut])
-def suggest_specialists(request_id: int, session=Depends(get_db), settings=Depends(get_settings),
-                        user=Depends(require_role("head"))):
+def suggest_specialists(request_id: int, session=Depends(get_db), user=Depends(require_role("head")),
+                        client=Depends(get_load_client), trace_id=Depends(get_trace_id)):
     request = get_visible_request(session, request_id, user)
-    now = datetime.now(timezone.utc)
-    return [load_out(*item) for item in logic.suggest_specialists(session, request.category_id, settings, now)]
+    result = client.rank_specialists(request.category_id, request_id=trace_id)
+    return [specialist_load_out(item) for item in result.specialists]
 
 
 @router.get("/{request_id}/assignees", response_model=list[AssigneeOut])

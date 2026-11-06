@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordBearer
 
 from api.security import decode_token
@@ -18,6 +18,16 @@ def get_db():
 
 def get_settings(session=Depends(get_db)):
     return settings.get_all_settings(session)
+
+
+def get_load_client(request: Request):
+    """Клиент сервиса загрузки, созданный в lifespan приложения."""
+    return request.app.state.load_client
+
+
+def get_trace_id(request: Request):
+    """Идентификатор HTTP-запроса для сквозных логов, его же получает сервис загрузки."""
+    return request.state.trace_id
 
 
 def get_current_user(token: str = Depends(oauth2_scheme), session=Depends(get_db)):

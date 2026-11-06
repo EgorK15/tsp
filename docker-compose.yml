@@ -33,11 +33,25 @@ services:
   load-service:
     build: .
     command: ["python", "-m", "load_service.server"]
+    stop_signal: SIGINT
     environment:
       DATABASE_URL: postgresql+psycopg2://techqueue:techqueue@db:5432/techqueue
     depends_on:
       db:
         condition: service_healthy
+
+  scheduler:
+    build: .
+    command: ["python", "-m", "scheduler.main"]
+    environment:
+      DATABASE_URL: postgresql+psycopg2://techqueue:techqueue@db:5432/techqueue
+      LOAD_SERVICE_TARGET: load-service:50051
+      LOAD_SERVICE_TIMEOUT: ${LOAD_SERVICE_TIMEOUT:-2}
+    depends_on:
+      db:
+        condition: service_healthy
+      load-service:
+        condition: service_started
 
   nginx:
     image: nginx:alpine
