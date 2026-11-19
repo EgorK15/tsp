@@ -224,3 +224,72 @@ Python-модули в `proto/` сгенерированы из `proto/load.prot
 pip install -r requirements-grpc-dev.txt
 python -m grpc_tools.protoc -I . --python_out=. --grpc_python_out=. proto/load.proto
 ```
+
+## ЛР4 — уведомления через RabbitMQ и WebSocket
+
+```text
+API / Scheduler → PostgreSQL → публикация после коммита
+                               → RabbitMQ → Notification Service → Nginx → WebSocket-клиент
+```
+
+API и Scheduler записывают уведомления в PostgreSQL. После коммита публикатор отправляет событие в RabbitMQ с
+`x-request-id`. Сервис уведомлений читает очередь, формирует текст и отправляет сообщение во все открытые
+WebSocket-сеансы получателя. Клиент при подключении и после обрыва загружает непрочитанное через REST, а повторы
+фильтрует по ID уведомления в пределах одного запуска.
+
+### Запуск
+
+Из корня проекта при запущенном Docker Desktop:
+
+```powershell
+docker compose up --build -d
+docker compose restart nginx
+docker compose ps
+```
+
+Для показа на **пустой или одноразовой тестовой базе** выполни `docker compose exec api python seed.py`.
+`seed.py` очищает таблицы перед заполнением.
+
+- Swagger — http://localhost/api/docs, переменная Postman `base_url` — `http://localhost/api`.
+- RabbitMQ Management — http://localhost:15672, демо-логин и пароль `techqueue`. Exchange `techqueue.events`
+  направляет события `request.*` в очередь `notifications`. Сообщения, которые потребитель отклоняет без повтора,
+  попадают в `notifications.dead` через `techqueue.dead`.
+- WebSocket — `ws://localhost/ws/notifications?token=...`. Токен выдаёт `POST /api/auth/login`.
+  Недействительный токен закрывает соединение с кодом `4401`.
+
+### Сценарий показа
+
+Установи зависимости для локального клиента командой `python -m pip install -r requirements.txt`. В разных
+терминалах запусти три клиента. Каждый спросит пароль отдельно.
+
+```powershell
+python notify_client.py --email head@techqueue.ru
+python notify_client.py --email kuznetsov@techqueue.ru
+python notify_client.py --email ivanova@techqueue.ru
+```
+
+Пароли по порядку — `head123`, `spec123`, `manager123`. Для другого адреса Nginx добавь
+`--base http://localhost:ПОРТ`, без суффикса `/api`.
+
+1. В Postman войди как Иванова и создай заявку для её сделки. Тело для демобазы — `{"deal_id":2,"category_id":2,"title":"Демо WebSocket"}`.
+   У руководителя появится уведомление о новой заявке.
+2. Войди как руководитель. Назначь Кузнецова через `PUT /requests/{id}/assignees` с телом `{"main_id":5,"co_ids":[]}`.
+   Уведомление придёт Кузнецову. Два его сеанса получат одно и то же сообщение.
+3. Кузнецов переводит заявку в `in_work`, затем в `ready` через `POST /requests/{id}/stage` с телом `{"to":"in_work"}`
+   или `{"to":"ready"}`. Иванова получает уведомление о готовом КП.
+4. Возьми заголовок `X-Request-ID` из ответа на назначение и сопоставь строку `published` от API со строкой
+   `event=request.assigned` от сервиса уведомлений. Поле `sessions` показывает число доставок в WebSocket-сеансы.
+
+```powershell
+docker compose logs api notification-service | Select-String -SimpleMatch 'X-Request-ID из ответа'
+```
+
+### Как проверить восстановление
+
+- Останови сервис уведомлений командой `docker compose stop notification-service`. Создай новую заявку и назначь
+  исполнителя. В RabbitMQ Management у `notifications` вырастет счётчик Ready. После
+  `docker compose start notification-service` очередь разберётся, клиент переподключится и увидит пропущенные записи.
+- Останови брокер командой `docker compose stop rabbitmq`. Назначение продолжит работать через API, а в логе API
+  появится повтор публикации. После `docker compose start rabbitmq` сообщение уйдёт в очередь и дойдёт до клиента.
+- Если контейнер `notification-service` **пересоздали**, выполни `docker compose restart nginx`, чтобы прокси
+  заново разрешил внутренний адрес сервиса.
