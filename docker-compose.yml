@@ -90,6 +90,7 @@ services:
       - ./nginx/static:/usr/share/nginx/html:ro
     depends_on:
       - api
+      - notification-service
 
 volumes:
   pgdata:
