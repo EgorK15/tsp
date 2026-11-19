@@ -6,19 +6,22 @@ TEMPLATES = {
 }
 
 
-def render(event):
-    """Уведомление для пользователя: текст по шаблону типа события и данные события для клиента."""
-    fields = dict(event.payload)
-    if event.event_type == "request_assigned":
+def render_text(event_type, payload):
+    fields = dict(payload)
+    if event_type == "request_assigned":
         fields["role"] = "вы основной исполнитель" if fields.get("is_main") else "вы соисполнитель"
     try:
-        text = TEMPLATES[event.event_type].format(**fields)
+        return TEMPLATES[event_type].format(**fields)
     except KeyError:
-        text = f"Заявка №{fields.get('request_id', '?')}: {event.event_type}"
+        return f"Заявка №{fields.get('request_id', '?')}: {event_type}"
+
+
+def render(event):
+    """Уведомление для пользователя: текст по шаблону типа события и данные события для клиента."""
     return {
         "id": event.notification_id,
         "event_type": event.event_type,
-        "text": text,
+        "text": render_text(event.event_type, event.payload),
         "payload": event.payload,
         "created_at": event.created_at.isoformat(),
     }
