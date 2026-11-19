@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from db.dashboard import store_load_snapshot, store_overdue_notifications
 from db.database import SessionLocal
+from events.hooks import request_scope
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ def check_overdue(client, request_id=None, session_factory=SessionLocal):
     request_id = request_id or uuid4().hex
     overdue = client.get_overdue_requests(request_id=request_id).requests
     rows = [(item.request_id, item.title, item.age, list(item.assignee_ids)) for item in overdue]
-    with session_factory.begin() as session:
+    with request_scope(request_id), session_factory.begin() as session:
         created = len(store_overdue_notifications(session, rows))
     logger.info("job=check_overdue request_id=%s overdue=%d created=%d", request_id, len(rows), created)
     return created
