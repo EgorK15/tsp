@@ -10,3 +10,5 @@ email-validator
 gunicorn
 grpcio==1.76.0
 protobuf==6.33.5
+pika==1.4.4
+aio-pika==10.1.2

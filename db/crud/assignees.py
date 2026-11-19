@@ -47,7 +47,7 @@ def assign(session, request_id, main_id, co_ids=(), by_user=None):
         if previous_roles.get(user_id) != is_main:
             notifications.create_notification(
                 session, user_id, "request_assigned",
-                {"request_id": request_id, "is_main": is_main}, commit=False,
+                {"request_id": request_id, "title": request.title, "is_main": is_main}, commit=False,
             )
     session.commit()
     return list_assignees(session, request_id)
@@ -94,7 +94,8 @@ def reassign_main(session, request_id, new_main_id):
         session.add(assignee)
     assignee.is_main = True
     notifications.create_notification(
-        session, new_main_id, "request_assigned", {"request_id": request_id, "is_main": True}, commit=False,
+        session, new_main_id, "request_assigned",
+        {"request_id": request_id, "title": request.title, "is_main": True}, commit=False,
     )
     session.commit()
     return assignee

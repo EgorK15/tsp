@@ -9,6 +9,9 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from api.routers import auth, categories, dashboard, deals, notifications, requests, settings, users
+from db.database import SessionLocal
+from events.hooks import publish_after_commit, request_scope
+from events.publisher import EventPublisher
 from load_service.client import LoadClient
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -21,11 +24,15 @@ GRPC_ERRORS = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Один клиент сервиса загрузки на воркер: канал открывается при старте и закрывается при остановке."""
+    """На воркер — один клиент сервиса загрузки и один публикатор событий, оба закрываются при остановке."""
     app.state.load_client = LoadClient.from_env()
+    publisher = EventPublisher.from_env().start()
+    stop_events = publish_after_commit(SessionLocal, publisher)
     try:
         yield
     finally:
+        stop_events()
+        publisher.close()
         app.state.load_client.close()
 
 
@@ -39,7 +46,8 @@ for router in [auth.router, users.router, categories.router, deals.router, reque
 @app.middleware("http")
 async def add_trace_id(request: Request, call_next):
     request.state.trace_id = uuid4().hex
-    response = await call_next(request)
+    with request_scope(request.state.trace_id):
+        response = await call_next(request)
     response.headers["X-Request-ID"] = request.state.trace_id
     return response
 

@@ -6,6 +6,9 @@ from datetime import datetime, timedelta, timezone
 
 import grpc
 
+from db.database import SessionLocal
+from events.hooks import publish_after_commit
+from events.publisher import EventPublisher
 from load_service.client import LoadClient
 from scheduler import jobs
 
@@ -51,6 +54,8 @@ def main():
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     client = LoadClient.from_env()
+    publisher = EventPublisher.from_env().start()
+    stop_events = publish_after_commit(SessionLocal, publisher)
     try:
         if args.once:
             raise SystemExit(0 if run_job(args.once, client) else 1)
@@ -60,6 +65,8 @@ def main():
         run_forever(client, stop)
         logger.info("Scheduler stopped")
     finally:
+        stop_events()
+        publisher.close()
         client.close()
 
 

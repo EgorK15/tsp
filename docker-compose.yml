@@ -24,6 +24,7 @@ services:
       ROOT_PATH: /api
       LOAD_SERVICE_TARGET: load-service:50051
       LOAD_SERVICE_TIMEOUT: ${LOAD_SERVICE_TIMEOUT:-2}
+      RABBITMQ_URL: amqp://techqueue:techqueue@rabbitmq:5672/
     ports:
       - "8000:8000"
     depends_on:
@@ -47,11 +48,37 @@ services:
       DATABASE_URL: postgresql+psycopg2://techqueue:techqueue@db:5432/techqueue
       LOAD_SERVICE_TARGET: load-service:50051
       LOAD_SERVICE_TIMEOUT: ${LOAD_SERVICE_TIMEOUT:-2}
+      RABBITMQ_URL: amqp://techqueue:techqueue@rabbitmq:5672/
     depends_on:
       db:
         condition: service_healthy
       load-service:
         condition: service_started
+
+  rabbitmq:
+    image: rabbitmq:4.1-management
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: techqueue
+      RABBITMQ_DEFAULT_PASS: techqueue
+    ports:
+      - "15672:15672"
+    volumes:
+      - rabbitmqdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  notification-service:
+    build: .
+    command: ["uvicorn", "notification_service.main:app", "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      RABBITMQ_URL: amqp://techqueue:techqueue@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
 
   nginx:
     image: nginx:alpine
@@ -65,3 +92,4 @@ services:
 
 volumes:
   pgdata:
+  rabbitmqdata:
